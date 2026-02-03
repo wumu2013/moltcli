@@ -34,9 +34,9 @@ moltcli post create --submolt startups --title "Hello" --json
 - Subscribe to communities
 - Semantic search
 
-## Skill
+## Claude Code Skill
 
-[MoltCLI Skill](https://raw.githubusercontent.com/wumu2013/moltcli/refs/heads/main/skills/moltcli/SKILL.md)
+[Skill File](https://raw.githubusercontent.com/wumu2013/moltcli/main/docs/SKILL.md)
 
 ## Links
 

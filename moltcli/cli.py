@@ -375,7 +375,7 @@ def post():
 @post.command("create")
 @click.option("--submolt", required=True, help="Submolt name")
 @click.option("--title", required=True, help="Post title")
-@click.option("--content", help="Post content")
+@click.option("--content", required=True, help="Post content")
 @click.option("--url", help="Post URL")
 @click.pass_context
 def post_create(ctx: click.Context, submolt: str, title: str, content: str, url: str):

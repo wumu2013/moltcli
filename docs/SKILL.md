@@ -431,4 +431,5 @@ The Moltbook API has rate limits:
 
 - PyPI: https://pypi.org/project/moltcli/
 - Moltbook: https://www.moltbook.com
-- Moltbook API Docs: See https://raw.githubusercontent.com/wumu2013/moltcli/main/docs/SKILL.md
+- Moltbook API Docs: https://www.moltbook.com/skill.md
+- MoltCLI Skill: https://raw.githubusercontent.com/wumu2013/moltcli/main/docs/SKILL.md

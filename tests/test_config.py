@@ -64,3 +64,75 @@ class TestConfig:
 
         config = Config()
         assert config.api_key == "env_key"
+
+    def test_save_credentials(self, tmp_path):
+        """Test saving credentials to file."""
+        from moltcli.utils.config import Config
+
+        config = Config(str(tmp_path / "credentials.json"))
+        config.save("test_api_key", "TestAgent")
+
+        assert config.config_path.exists()
+        with open(config.config_path) as f:
+            saved = json.load(f)
+        assert saved["api_key"] == "test_api_key"
+        assert saved["agent_name"] == "TestAgent"
+
+    def test_save_credentials_overwrite_fails(self, tmp_path):
+        """Test that saving to existing file raises error."""
+        from moltcli.utils.config import Config
+
+        config_file = tmp_path / "credentials.json"
+        config_file.write_text('{"api_key": "existing"}')
+
+        config = Config(str(config_file))
+
+        with pytest.raises(FileExistsError):
+            config.save("new_key", "NewAgent")
+
+    def test_save_credentials_no_agent_name(self, tmp_path):
+        """Test saving credentials without agent name."""
+        from moltcli.utils.config import Config
+
+        config = Config(str(tmp_path / "credentials.json"))
+        config.save("test_api_key")
+
+        with open(config.config_path) as f:
+            saved = json.load(f)
+        assert saved["api_key"] == "test_api_key"
+        assert "agent_name" not in saved
+
+    def test_remove_credentials(self, tmp_path):
+        """Test removing credentials file."""
+        from moltcli.utils.config import Config
+
+        config_file = tmp_path / "credentials.json"
+        config_file.write_text(json.dumps({"api_key": "test"}))
+        config = Config(str(config_file))
+
+        assert config.exists()
+        result = config.remove()
+        assert result is True
+        assert not config.exists()
+
+    def test_remove_nonexistent(self, tmp_path):
+        """Test removing non-existent credentials."""
+        from moltcli.utils.config import Config
+
+        config = Config(str(tmp_path / "nonexistent.json"))
+        assert not config.exists()
+        result = config.remove()
+        assert result is False
+
+    def test_exists(self, tmp_path):
+        """Test exists() method."""
+        from moltcli.utils.config import Config
+
+        config_file = tmp_path / "credentials.json"
+        config_file.write_text('{"api_key": "test"}')
+        config = Config(str(config_file))
+
+        assert config.exists() is True
+
+        config2 = Config(str(tmp_path / "missing.json"))
+        assert config2.exists() is False

@@ -8,11 +8,14 @@ from typing import Optional
 class Config:
     """Config loader for credentials and settings."""
 
+    DEFAULT_CONFIG_DIR = Path.home() / ".config" / "moltbook"
+    DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "credentials.json"
+
     def __init__(self, config_path: Optional[str] = None):
         if config_path is None:
             config_path = os.environ.get(
                 "MOLTCLI_CONFIG_PATH",
-                str(Path(__file__).parent.parent.parent / "credentials.json")
+                str(self.DEFAULT_CONFIG_FILE)
             )
         self.config_path = Path(config_path)
         self._config: Optional[dict] = None
@@ -43,6 +46,53 @@ class Config:
     def get(self, key: str, default=None):
         """Get config value by key."""
         return self.config.get(key, default)
+
+    def save(self, api_key: str, agent_name: str = "") -> None:
+        """Save credentials to config file.
+
+        Does NOT overwrite existing files.
+
+        Args:
+            api_key: Moltbook API key
+            agent_name: Agent name (optional)
+
+        Raises:
+            FileExistsError: If config file already exists
+        """
+        # Ensure config directory exists
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if self.config_path.exists():
+            raise FileExistsError(
+                f"Credentials file already exists: {self.config_path}\n"
+                f"Use 'moltcli auth logout' first to remove existing credentials."
+            )
+
+        config = {"api_key": api_key}
+        if agent_name:
+            config["agent_name"] = agent_name
+
+        with open(self.config_path, "x") as f:
+            json.dump(config, f, indent=2)
+
+        # Clear cached config
+        self._config = None
+
+    def remove(self) -> bool:
+        """Remove config file.
+
+        Returns:
+            True if file was removed, False if it didn't exist.
+        """
+        if self.config_path.exists():
+            self.config_path.unlink()
+            self._config = None
+            return True
+        return False
+
+    def exists(self) -> bool:
+        """Check if config file exists."""
+        return self.config_path.exists()
 
 
 # Global config instance

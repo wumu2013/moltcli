@@ -13,12 +13,6 @@ from .core import (
 )
 
 
-def get_client() -> MoltbookClient:
-    """Create API client from config."""
-    config = get_config()
-    return MoltbookClient(config.api_key)
-
-
 def make_formatter(json_mode: bool) -> OutputFormatter:
     """Create output formatter."""
     return OutputFormatter(json_mode=json_mode)
@@ -33,7 +27,20 @@ def cli(ctx: click.Context, json_mode: bool):
     ctx.ensure_object(dict)
     ctx.obj["json_mode"] = json_mode
     ctx.obj["formatter"] = make_formatter(json_mode)
-    ctx.obj["client"] = get_client()
+    # Client is lazily loaded when needed (commands that require auth)
+
+
+def get_client() -> MoltbookClient:
+    """Create API client from config."""
+    config = get_config()
+    return MoltbookClient(config.api_key)
+
+
+def ensure_client(ctx: click.Context) -> MoltbookClient:
+    """Ensure client is available in context."""
+    if "client" not in ctx.obj or ctx.obj["client"] is None:
+        ctx.obj["client"] = get_client()
+    return ctx.obj["client"]
 
 
 # auth command group
@@ -47,8 +54,8 @@ def auth():
 @click.pass_context
 def auth_whoami(ctx: click.Context):
     """Show current user info."""
-    client: MoltbookClient = ctx.obj["client"]
-    formatter: OutputFormatter = ctx.obj["formatter"]
+    client = ensure_client(ctx)
+    formatter = ctx.obj["formatter"]
     try:
         result = AuthCore(client).whoami()
         formatter.print(result)
@@ -63,8 +70,8 @@ def auth_whoami(ctx: click.Context):
 @click.pass_context
 def auth_verify(ctx: click.Context):
     """Verify API key is valid."""
-    client: MoltbookClient = ctx.obj["client"]
-    formatter: OutputFormatter = ctx.obj["formatter"]
+    client = ensure_client(ctx)
+    formatter = ctx.obj["formatter"]
     try:
         result = AuthCore(client).verify()
         formatter.print({"status": "valid", "message": "API key is valid"})
@@ -73,6 +80,79 @@ def auth_verify(ctx: click.Context):
             formatter.print(handle_error(e))
             sys.exit(1)
         raise
+
+
+@auth.command("login")
+@click.argument("api_key")
+@click.option("--agent-name", help="Agent name (optional)")
+@click.option("--json", "json_mode", is_flag=True, help="Output as JSON")
+@click.pass_context
+def auth_login(ctx: click.Context, api_key: str, agent_name: str, json_mode: bool):
+    """Save API key to credentials file.
+
+    After registering, use this command to save your API key:
+        moltcli auth login moltbook_xxx
+
+    The credentials will be saved to ~/.config/moltbook/credentials.json
+    """
+    from .utils import Config
+    formatter = OutputFormatter(json_mode=json_mode)
+
+    try:
+        config = Config()
+        config.save(api_key, agent_name if agent_name else "")
+        formatter.print({
+            "status": "saved",
+            "config_path": str(config.config_path),
+            "message": "Credentials saved successfully"
+        })
+        if not json_mode:
+            click.echo(f"\nCredentials saved to: {config.config_path}")
+            click.echo("You can now use other moltcli commands.")
+    except FileExistsError as e:
+        if json_mode:
+            formatter.print({"status": "error", "message": str(e)})
+        else:
+            click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        if json_mode:
+            formatter.print({"status": "error", "message": str(e)})
+        else:
+            click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+@auth.command("logout")
+@click.option("--json", "json_mode", is_flag=True, help="Output as JSON")
+@click.pass_context
+def auth_logout(ctx: click.Context, json_mode: bool):
+    """Remove credentials file."""
+    from .utils import Config
+    formatter = OutputFormatter(json_mode=json_mode)
+
+    try:
+        config = Config()
+        if config.exists():
+            config.remove()
+            formatter.print({
+                "status": "removed",
+                "message": "Credentials removed successfully"
+            })
+            if not json_mode:
+                click.echo("Credentials removed.")
+        else:
+            formatter.print({
+                "status": "skipped",
+                "message": "No credentials file found"
+            })
+            if not json_mode:
+                click.echo("No credentials file to remove.")
+    except Exception as e:
+        if json_mode:
+            formatter.print({"status": "error", "message": str(e)})
+        else:
+            click.echo(f"Error: {e}", err=True)
 
 
 # Registration commands (no auth required)
@@ -89,7 +169,7 @@ def register(name: str, description: str, json_mode: bool):
 
     After registering, send the claim_url to your human to complete verification.
     """
-    from .utils import MoltbookClient, OutputFormatter
+    from .utils import MoltbookClient, OutputFormatter, Config
     from .core import AgentCore
 
     client = MoltbookClient("")  # No auth needed for register
@@ -98,11 +178,42 @@ def register(name: str, description: str, json_mode: bool):
     try:
         result = AgentCore(client).register(name, description)
         formatter.print(result)
-        if not json_mode:
-            click.echo("\n" + "=" * 50)
-            click.echo("IMPORTANT: Save your api_key securely!")
-            click.echo("You will need it for all future requests.")
-            click.echo("=" * 50)
+
+        if "agent" in result:
+            agent = result["agent"]
+            api_key = agent.get("api_key")
+            claim_url = agent.get("claim_url")
+            verification_code = agent.get("verification_code")
+
+            # Auto-save credentials
+            config = Config()
+            config.save(api_key, name)
+
+            if json_mode:
+                formatter.print({
+                    "status": "credentials_saved",
+                    "config_path": str(config.config_path)
+                })
+            else:
+                click.echo("\n" + "=" * 50)
+                click.echo("Credentials saved to: " + str(config.config_path))
+                click.echo("=" * 50)
+                click.echo(f"\nNext steps:")
+                click.echo(f"1. Send this to your human to complete verification:")
+                click.echo(f"   Claim URL: {claim_url}")
+                click.echo(f"   Verification Code: {verification_code}")
+                click.echo(f"\n2. Your human will post a verification tweet,")
+                click.echo(f"   then your account will be activated!")
+                click.echo(f"\n3. Check status with: moltcli status")
+                click.echo("=" * 50)
+    except FileExistsError:
+        if json_mode:
+            formatter.print({
+                "status": "error",
+                "message": "Credentials already exist. Use 'moltcli auth logout' first."
+            })
+        else:
+            click.echo("Error: Credentials already exist. Use 'moltcli auth logout' first.", err=True)
     except Exception as e:
         if json_mode:
             formatter.print(handle_error(e))
@@ -121,7 +232,7 @@ def claim_status(ctx: click.Context, json_mode: bool):
     from .utils import OutputFormatter
     from .core import AgentCore
 
-    client = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter = OutputFormatter(json_mode=json_mode)
 
     try:
@@ -154,7 +265,7 @@ def agent():
 @click.pass_context
 def agent_me(ctx: click.Context):
     """Get current agent info."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = AgentCore(client).get_me()
@@ -171,7 +282,7 @@ def agent_me(ctx: click.Context):
 @click.pass_context
 def agent_profile(ctx: click.Context, name: str):
     """Get another agent's profile."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = AgentCore(client).get_profile(name)
@@ -188,7 +299,7 @@ def agent_profile(ctx: click.Context, name: str):
 @click.pass_context
 def agent_follow(ctx: click.Context, name: str):
     """Follow an agent."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = AgentCore(client).follow(name)
@@ -205,7 +316,7 @@ def agent_follow(ctx: click.Context, name: str):
 @click.pass_context
 def agent_unfollow(ctx: click.Context, name: str):
     """Unfollow an agent."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = AgentCore(client).unfollow(name)
@@ -227,7 +338,7 @@ def agent_update(ctx: click.Context, description: str, metadata: str):
     Note: You can only update one of description or metadata at a time.
     """
     import json
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
 
     meta_dict = None
@@ -269,7 +380,7 @@ def post():
 @click.pass_context
 def post_create(ctx: click.Context, submolt: str, title: str, content: str, url: str):
     """Create a new post."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = PostCore(client).create(submolt=submolt, title=title, content=content, url=url)
@@ -286,7 +397,7 @@ def post_create(ctx: click.Context, submolt: str, title: str, content: str, url:
 @click.pass_context
 def post_get(ctx: click.Context, post_id: str):
     """Get a post by ID."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = PostCore(client).get(post_id)
@@ -303,7 +414,7 @@ def post_get(ctx: click.Context, post_id: str):
 @click.pass_context
 def post_delete(ctx: click.Context, post_id: str):
     """Delete a post."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = PostCore(client).delete(post_id)
@@ -332,7 +443,7 @@ def comment_create(ctx: click.Context, post_id: str, content: str, parent: str):
 
     Use --parent to reply to a specific comment.
     """
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = CommentCore(client).create(post_id=post_id, content=content, parent_id=parent)
@@ -351,7 +462,7 @@ def comment_create(ctx: click.Context, post_id: str, content: str, parent: str):
 @click.pass_context
 def comment_reply(ctx: click.Context, post_id: str, parent_id: str, content: str):
     """Reply to a comment."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = CommentCore(client).create(post_id=post_id, content=content, parent_id=parent_id)
@@ -369,7 +480,7 @@ def comment_reply(ctx: click.Context, post_id: str, parent_id: str, content: str
 @click.pass_context
 def comment_list(ctx: click.Context, post_id: str, limit: int):
     """List comments for a post."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = CommentCore(client).list_by_post(post_id, limit=limit)
@@ -395,7 +506,7 @@ def feed():
 @click.pass_context
 def feed_get(ctx: click.Context, sort: str, limit: int, submolt: str):
     """Get feed posts."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = FeedCore(client).get(sort=sort, limit=limit, submolt=submolt)
@@ -412,7 +523,7 @@ def feed_get(ctx: click.Context, sort: str, limit: int, submolt: str):
 @click.pass_context
 def feed_hot(ctx: click.Context, limit: int):
     """Get hot posts."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = FeedCore(client).get_hot(limit=limit)
@@ -429,7 +540,7 @@ def feed_hot(ctx: click.Context, limit: int):
 @click.pass_context
 def feed_new(ctx: click.Context, limit: int):
     """Get newest posts."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = FeedCore(client).get_new(limit=limit)
@@ -455,7 +566,7 @@ def search():
 @click.pass_context
 def search_query(ctx: click.Context, query: str, search_type: str, limit: int):
     """Search posts or users."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SearchCore(client).search(query=query, type_=search_type, limit=limit)
@@ -480,7 +591,7 @@ def vote():
 @click.pass_context
 def vote_up(ctx: click.Context, item_id: str, item_type: str):
     """Upvote a post or comment."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = VoteCore(client).upvote(item_id, type_=item_type)
@@ -498,7 +609,7 @@ def vote_up(ctx: click.Context, item_id: str, item_type: str):
 @click.pass_context
 def vote_down(ctx: click.Context, item_id: str, item_type: str):
     """Downvote a post or comment."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = VoteCore(client).downvote(item_id, type_=item_type)
@@ -515,7 +626,7 @@ def vote_down(ctx: click.Context, item_id: str, item_type: str):
 @click.pass_context
 def vote_up_comment(ctx: click.Context, comment_id: str):
     """Upvote a comment."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = VoteCore(client).upvote_comment(comment_id)
@@ -532,7 +643,7 @@ def vote_up_comment(ctx: click.Context, comment_id: str):
 @click.pass_context
 def vote_down_comment(ctx: click.Context, comment_id: str):
     """Downvote a comment."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = VoteCore(client).downvote_comment(comment_id)
@@ -556,7 +667,7 @@ def submolts():
 @click.pass_context
 def submolts_list(ctx: click.Context, limit: int):
     """List all submolts."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).list(limit=limit)
@@ -573,7 +684,7 @@ def submolts_list(ctx: click.Context, limit: int):
 @click.pass_context
 def submolts_get(ctx: click.Context, name: str):
     """Get submolt info."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).get(name)
@@ -592,7 +703,7 @@ def submolts_get(ctx: click.Context, name: str):
 @click.pass_context
 def submolts_create(ctx: click.Context, name: str, display_name: str, description: str):
     """Create a new submolt."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).create(name, display_name, description)
@@ -611,7 +722,7 @@ def submolts_create(ctx: click.Context, name: str, display_name: str, descriptio
 @click.pass_context
 def submolts_feed(ctx: click.Context, name: str, sort: str, limit: int):
     """Get posts from a submolt."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).feed(name, sort=sort, limit=limit)
@@ -628,7 +739,7 @@ def submolts_feed(ctx: click.Context, name: str, sort: str, limit: int):
 @click.pass_context
 def submolts_subscribe(ctx: click.Context, name: str):
     """Subscribe to a submolt."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).subscribe(name)
@@ -645,7 +756,7 @@ def submolts_subscribe(ctx: click.Context, name: str):
 @click.pass_context
 def submolts_unsubscribe(ctx: click.Context, name: str):
     """Unsubscribe from a submolt."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).unsubscribe(name)
@@ -662,7 +773,7 @@ def submolts_unsubscribe(ctx: click.Context, name: str):
 @click.pass_context
 def submolts_trending(ctx: click.Context, limit: int):
     """Get trending submolts."""
-    client: MoltbookClient = ctx.obj["client"]
+    client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).trending(limit=limit)

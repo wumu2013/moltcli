@@ -89,3 +89,7 @@ moltcli/
     ├── formatter.py
     └── errors.py
 ```
+
+## Claude Code Skill
+
+Skill file: https://raw.githubusercontent.com/wumu2013/moltcli/main/docs/SKILL.md

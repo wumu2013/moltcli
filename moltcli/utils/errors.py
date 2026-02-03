@@ -51,13 +51,9 @@ class NotFoundError(MoltCLIError):
 class RateLimitError(MoltCLIError):
     """Rate limit exceeded."""
 
-    # Default wait times for common scenarios
-    DEFAULT_WAIT_POST = 1800  # 30 minutes for posting
-    DEFAULT_WAIT_VOTE = 10    # 10 seconds for voting
-    DEFAULT_WAIT_GENERAL = 60  # 60 seconds for general requests
-
     def __init__(
         self,
+        message: Optional[str] = None,
         retry_after: Optional[int] = None,
         limit: Optional[int] = None,
         remaining: Optional[int] = None,
@@ -66,6 +62,7 @@ class RateLimitError(MoltCLIError):
         """Initialize rate limit error.
 
         Args:
+            message: Raw error message from server
             retry_after: Seconds until retry is allowed
             limit: Rate limit maximum requests
             remaining: Remaining requests in window
@@ -75,25 +72,24 @@ class RateLimitError(MoltCLIError):
         self.limit = limit
         self.remaining = remaining
 
-        # Get default wait time based on endpoint type
-        default_wait = getattr(self, f"DEFAULT_WAIT_{endpoint_type.upper()}", self.DEFAULT_WAIT_GENERAL)
-        wait_time = retry_after or default_wait
+        # Use server message if available, else generic
+        if message:
+            final_message = message
+        else:
+            default_wait = 60
+            if endpoint_type == "post":
+                default_wait = 1800
+            elif endpoint_type == "vote":
+                default_wait = 10
+            final_message = f"Rate limit exceeded. Retry after {retry_after or default_wait} seconds."
 
-        # Build message
+        # Suggestion with retry_after
         if retry_after:
-            message = f"Rate limit exceeded. Retry after {retry_after} seconds."
+            suggestion = f"Retry after {retry_after} seconds."
         else:
-            message = f"Rate limit exceeded. Please wait about {wait_time} seconds."
+            suggestion = "Wait before retrying."
 
-        # Build suggestion
-        if remaining is not None and remaining == 0:
-            suggestion = f"Rate limit reached (0/{limit} remaining). Wait {wait_time} seconds."
-        elif retry_after:
-            suggestion = f"Wait {retry_after} seconds before retrying."
-        else:
-            suggestion = f"Wait ~{wait_time} seconds before retrying. Consider adding --wait flag for auto-delay."
-
-        super().__init__(message, RATE_LIMIT, suggestion)
+        super().__init__(final_message, RATE_LIMIT, suggestion)
 
 
 def handle_error(error: Exception) -> dict:

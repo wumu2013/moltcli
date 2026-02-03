@@ -50,7 +50,7 @@ class TestMoltCLIError:
         error = RateLimitError(retry_after=60)
 
         assert "60 seconds" in error.message
-        assert "Wait 60 seconds" in error.suggestion
+        assert "Retry after 60 seconds" in error.suggestion
         assert error.retry_after == 60
 
     def test_rate_limit_error_with_limit_info(self):

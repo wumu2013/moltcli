@@ -46,7 +46,7 @@ class SubmoltsCore:
 
     def subscribe(self, name: str) -> dict:
         """Subscribe to a submolt."""
-        return self._client.post(f"/submolts/{name}/subscribe")
+        return self._client.post(f"/submolts/{name}/subscribe?action=subscribe")
 
     def unsubscribe(self, name: str) -> dict:
         """Unsubscribe from a submolt."""

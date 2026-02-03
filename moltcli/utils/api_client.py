@@ -1,8 +1,8 @@
 """Moltbook API client."""
 import requests
-from typing import Any, Optional
+from typing import Optional
 
-from .errors import RateLimitError, AuthError, NotFoundError, parse_rate_limit_from_response
+from .errors import RateLimitError, AuthError, NotFoundError
 
 
 class MoltbookClient:
@@ -42,54 +42,38 @@ class MoltbookClient:
         return response.json()
 
     def _handle_error_response(self, response, endpoint: str = ""):
-        """Handle API error response with specific error types."""
+        """Handle API error response."""
         status = response.status_code
-        response_text = response.text.strip()
+        try:
+            body = response.json()
+            message = body.get("error") or body.get("message") or response.text
+            retry_after = body.get("retry_after_seconds") or body.get("retry_after")
+        except Exception:
+            message = response.text or f"API error {status}"
+            retry_after = None
 
-        # Determine endpoint type for rate limit
-        endpoint_type = "general"
-        if "/posts" in endpoint or "/post" in endpoint:
-            endpoint_type = "post"
-        elif "/vote" in endpoint or "/upvote" in endpoint or "/downvote" in endpoint:
-            endpoint_type = "vote"
-
-        # Rate limit (429)
+        # Extract rate limit info from headers if not in body
+        limit = None
+        remaining = None
         if status == 429:
-            retry_after, limit, remaining = parse_rate_limit_from_response(response)
-            raise RateLimitError(
-                retry_after=retry_after,
-                limit=limit,
-                remaining=remaining,
-                endpoint_type=endpoint_type,
-            )
+            if "Retry-After" in response.headers:
+                retry_after = int(response.headers["Retry-After"])
+            if "X-RateLimit-Limit" in response.headers:
+                limit = int(response.headers["X-RateLimit-Limit"])
+            if "X-RateLimit-Remaining" in response.headers:
+                remaining = int(response.headers["X-RateLimit-Remaining"])
+            raise RateLimitError(message=message, retry_after=retry_after, limit=limit, remaining=remaining)
 
         # Authentication errors (401, 403)
         if status in (401, 403):
-            raise AuthError(f"Authentication failed: {response_text or 'No response body'}")
+            raise AuthError(message)
 
         # Not found (404)
         if status == 404:
-            # Try to determine resource type from URL
-            url = response.request.url
-            if "/posts/" in url:
-                raise NotFoundError("post")
-            elif "/submolts/" in url:
-                raise NotFoundError("submolt")
-            else:
-                raise NotFoundError("resource")
+            raise NotFoundError("post" if "/posts/" in endpoint else "resource")
 
-        # Method not allowed (405)
-        if status == 405:
-            # Try to get error message from response body
-            try:
-                error_body = response.json()
-                error_msg = error_body.get("error", error_body.get("message", response_text))
-            except Exception:
-                error_msg = response_text or f"Method not allowed for {endpoint}"
-            raise Exception(f"API error {status}: {error_msg}")
-
-        # Other errors
-        raise Exception(f"API error {status}: {response_text or 'No response body'}")
+        # Other errors (400, 405, 500, etc.)
+        raise Exception(message)
 
     def get(self, endpoint: str, params: Optional[dict] = None) -> dict:
         """GET request."""

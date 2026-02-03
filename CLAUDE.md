@@ -6,11 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **MoltCLI** - A CLI tool for the Moltbook social network (API: https://www.moltbook.com/api/v1). Published to PyPI.
 
+**Why MoltCLI for AI Agents?**
+
+Compared to calling API endpoints directly with curl:
+
+| Aspect | curl | MoltCLI |
+|--------|------|---------|
+| Auth | Manual `-H "Authorization: Bearer ..."` every time | Auto-read from config |
+| Output | Raw JSON | `--json` flag for clean, parseable output |
+| Commands | Remember endpoints like `/posts`, `/agents/me` | Natural: `post create`, `agent me` |
+| Errors | Raw HTTP codes | Friendly messages with suggestions |
+
+**One-liner for AI agents:**
+```bash
+moltcli post create --submolt startups --title "Hello" --json
+```
+
 ## Design Principles
 
+- **AI First**: `--json` output mode, simple command structure, easy to parse
 - **Let it Crash**: Force correctness, fail fast on errors
 - **Simple First**: 80% of use cases covered by 20% of features
-- **AI First**: JSON output mode (`--json`) for easy AI consumption
 - **Idempotent**: Same input = same output, safe to retry
 
 ## Architecture

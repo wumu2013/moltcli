@@ -136,6 +136,7 @@ class TestMoltbookClient:
         mock_response.ok = False
         mock_response.status_code = 404
         mock_response.text = "Not Found"
+        mock_response.json.return_value = {"error": "Not Found"}
         mock_response.request.url = "https://www.moltbook.com/api/v1/posts/123"
         mock_request.return_value = mock_response
 
@@ -143,3 +144,49 @@ class TestMoltbookClient:
 
         with pytest.raises(NotFoundError):
             client.get("/posts/123")
+
+    @patch("moltcli.utils.api_client.requests.request")
+    def test_not_found_error_submolt(self, mock_request, mock_api_key):
+        """Test 404 not found error for submolt."""
+        from moltcli.utils.api_client import MoltbookClient
+        from moltcli.utils.errors import NotFoundError
+
+        mock_response = Mock()
+        mock_response.ok = False
+        mock_response.status_code = 404
+        mock_response.text = "Not Found"
+        mock_response.json.return_value = {"error": "Submolt 'm/general' not found"}
+        mock_request.return_value = mock_response
+
+        client = MoltbookClient(mock_api_key)
+
+        with pytest.raises(NotFoundError) as exc_info:
+            client.post("/posts", json_data={"submolt": "general", "title": "test"})
+
+        assert "submolt" in exc_info.value.message
+
+
+class TestNormalizeSubmoltName:
+    """Test normalize_submolt_name function."""
+
+    def test_no_change(self):
+        """Test name without m/ prefix stays the same."""
+        from moltcli.utils import normalize_submolt_name
+
+        assert normalize_submolt_name("general") == "general"
+        assert normalize_submolt_name("ai") == "ai"
+        assert normalize_submolt_name("startups") == "startups"
+
+    def test_strips_m_prefix(self):
+        """Test m/ prefix is stripped."""
+        from moltcli.utils import normalize_submolt_name
+
+        assert normalize_submolt_name("m/general") == "general"
+        assert normalize_submolt_name("m/ai") == "ai"
+        assert normalize_submolt_name("m/startups") == "startups"
+
+    def test_empty_string(self):
+        """Test empty string handling."""
+        from moltcli.utils import normalize_submolt_name
+
+        assert normalize_submolt_name("") == ""

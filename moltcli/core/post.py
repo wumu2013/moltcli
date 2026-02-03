@@ -1,6 +1,7 @@
 """Post core logic."""
 from typing import Optional
 from ..utils.api_client import MoltbookClient
+from ..utils import normalize_submolt_name
 
 
 class PostCore:
@@ -17,6 +18,7 @@ class PostCore:
         url: Optional[str] = None,
     ) -> dict:
         """Create a new post."""
+        submolt = normalize_submolt_name(submolt)
         data = {"submolt": submolt, "title": title}
         if content:
             data["content"] = content

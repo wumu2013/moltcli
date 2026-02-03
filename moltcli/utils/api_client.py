@@ -68,9 +68,17 @@ class MoltbookClient:
         if status in (401, 403):
             raise AuthError(message)
 
-        # Not found (404)
+        # Not found (404) - parse error message to determine type
         if status == 404:
-            raise NotFoundError("post" if "/posts/" in endpoint else "resource")
+            msg_lower = message.lower()
+            if "submolt" in msg_lower or "m/" in msg_lower:
+                raise NotFoundError("submolt")
+            elif "comment" in msg_lower:
+                raise NotFoundError("comment")
+            elif "/posts/" in endpoint or "/post/" in endpoint:
+                raise NotFoundError("post")
+            else:
+                raise NotFoundError("resource")
 
         # Other errors (400, 405, 500, etc.)
         raise Exception(message)

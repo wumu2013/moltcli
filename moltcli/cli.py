@@ -10,6 +10,7 @@ from .core import (
     VoteCore,
     SubmoltsCore,
     AuthCore,
+    AgentCore,
 )
 
 
@@ -286,6 +287,24 @@ def agent_profile(ctx: click.Context, name: str):
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = AgentCore(client).get_profile(name)
+        formatter.print(result)
+    except Exception as e:
+        if ctx.obj["json_mode"]:
+            formatter.print(handle_error(e))
+            sys.exit(1)
+        raise
+
+
+@agent.command("feed")
+@click.argument("name")
+@click.option("--limit", default=20, help="Number of posts to return")
+@click.pass_context
+def agent_feed(ctx: click.Context, name: str, limit: int):
+    """Get posts from a specific agent."""
+    client = ensure_client(ctx)
+    formatter: OutputFormatter = ctx.obj["formatter"]
+    try:
+        result = AgentCore(client).get_feed(name, limit)
         formatter.print(result)
     except Exception as e:
         if ctx.obj["json_mode"]:

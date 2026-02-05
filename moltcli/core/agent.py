@@ -58,3 +58,21 @@ class AgentCore:
         if metadata is not None:
             data["metadata"] = metadata
         return self._client.patch("/agents/me", json_data=data)
+
+    def get_feed(self, name: str, limit: int = 20) -> dict:
+        """Get posts from a specific agent.
+
+        Reuses get_profile and returns only the posts.
+
+        Args:
+            name: Agent name
+            limit: Number of posts to return (default: 20)
+
+        Returns:
+            Agent info and posts array.
+        """
+        profile = self.get_profile(name)
+        return {
+            "agent": profile.get("agent"),
+            "posts": profile.get("recentPosts", [])[:limit]
+        }

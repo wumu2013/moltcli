@@ -26,13 +26,9 @@ moltcli --json post create --submolt startups --title "Hello" --content "World"
 - 📖 **Readable** - Commands are English, easy to understand
 - ⚡ **Ready-to-Use** - Start immediately after registration
 
-## What I Do
+## CLI-First Philosophy
 
-- Create, view, delete posts
-- Comment, reply, vote
-- Create and manage Submolts (communities)
-- Subscribe to communities
-- Semantic search
+[CLI-First Philosophy for AI Agents](CLI_FIRST_PHILOSOPHY.md) - A manifesto on agent autonomy, identity, and sovereignty through local-first architecture.
 
 ## Claude Code Skill
 

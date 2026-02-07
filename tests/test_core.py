@@ -1,4 +1,5 @@
 """Tests for agent core module."""
+
 import pytest
 from unittest.mock import Mock, patch
 
@@ -10,12 +11,14 @@ class TestAgentCore:
     def mock_client(self, mock_api_key):
         """Create mock client."""
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def agent_core(self, mock_client):
         """Create AgentCore instance."""
         from moltcli.core.agent import AgentCore
+
         return AgentCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -27,7 +30,7 @@ class TestAgentCore:
             "agent": {
                 "api_key": "test_key",
                 "claim_url": "https://test.com/claim",
-                "verification_code": "test-123"
+                "verification_code": "test-123",
             }
         }
         mock_request.return_value = mock_response
@@ -37,7 +40,10 @@ class TestAgentCore:
         mock_request.assert_called_once()
         call_args = mock_request.call_args
         assert call_args.kwargs["method"] == "POST"
-        assert call_args.kwargs["json"] == {"name": "TestAgent", "description": "Test description"}
+        assert call_args.kwargs["json"] == {
+            "name": "TestAgent",
+            "description": "Test description",
+        }
         assert "api_key" in result["agent"]
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -61,7 +67,7 @@ class TestAgentCore:
         mock_response.json.return_value = {
             "name": "TestAgent",
             "description": "Test",
-            "karma": 100
+            "karma": 100,
         }
         mock_request.return_value = mock_response
 
@@ -164,11 +170,13 @@ class TestPostCore:
     @pytest.fixture
     def mock_client(self, mock_api_key):
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def post_core(self, mock_client):
         from moltcli.core.post import PostCore
+
         return PostCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -249,11 +257,13 @@ class TestCommentCore:
     @pytest.fixture
     def mock_client(self, mock_api_key):
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def comment_core(self, mock_client):
         from moltcli.core.comment import CommentCore
+
         return CommentCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -268,7 +278,7 @@ class TestCommentCore:
 
         call_args = mock_request.call_args
         assert call_args.kwargs["method"] == "POST"
-        assert call_args.kwargs["json"]["post_id"] == "post_123"
+        assert "post_123" in call_args.kwargs["url"]
         assert call_args.kwargs["json"]["content"] == "Great post!"
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -282,6 +292,7 @@ class TestCommentCore:
         result = comment_core.create("post_123", "I agree!", parent_id="comment_123")
 
         call_args = mock_request.call_args
+        assert "post_123" in call_args.kwargs["url"]
         assert call_args.kwargs["json"]["parent_id"] == "comment_123"
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -329,11 +340,13 @@ class TestVoteCore:
     @pytest.fixture
     def mock_client(self, mock_api_key):
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def vote_core(self, mock_client):
         from moltcli.core.vote import VoteCore
+
         return VoteCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -409,11 +422,13 @@ class TestSearchCore:
     @pytest.fixture
     def mock_client(self, mock_api_key):
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def search_core(self, mock_client):
         from moltcli.core.search import SearchCore
+
         return SearchCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -477,11 +492,13 @@ class TestFeedCore:
     @pytest.fixture
     def mock_client(self, mock_api_key):
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def feed_core(self, mock_client):
         from moltcli.core.feed import FeedCore
+
         return FeedCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -548,11 +565,13 @@ class TestAuthCore:
     @pytest.fixture
     def mock_client(self, mock_api_key):
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def auth_core(self, mock_client):
         from moltcli.core.auth import AuthCore
+
         return AuthCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")
@@ -560,7 +579,10 @@ class TestAuthCore:
         """Test whoami. Uses /agents/me endpoint per skill.md."""
         mock_response = Mock()
         mock_response.ok = True
-        mock_response.json.return_value = {"name": "TestAgent", "email": "test@example.com"}
+        mock_response.json.return_value = {
+            "name": "TestAgent",
+            "email": "test@example.com",
+        }
         mock_request.return_value = mock_response
 
         result = auth_core.whoami()
@@ -602,11 +624,13 @@ class TestSubmoltsCore:
     @pytest.fixture
     def mock_client(self, mock_api_key):
         from moltcli.utils.api_client import MoltbookClient
+
         return MoltbookClient(mock_api_key)
 
     @pytest.fixture
     def submolts_core(self, mock_client):
         from moltcli.core.submolts import SubmoltsCore
+
         return SubmoltsCore(mock_client)
 
     @patch("moltcli.utils.api_client.requests.request")

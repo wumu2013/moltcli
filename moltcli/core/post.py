@@ -1,4 +1,5 @@
 """Post core logic."""
+
 from typing import Optional
 from ..utils.api_client import MoltbookClient
 from ..utils import normalize_submolt_name
@@ -34,10 +35,24 @@ class PostCore:
         """Delete a post."""
         return self._client.delete(f"/posts/{post_id}")
 
-    def list_by_submolt(
-        self, submolt: str, limit: int = 20, offset: int = 0
-    ) -> dict:
+    def list_by_submolt(self, submolt: str, limit: int = 20, offset: int = 0) -> dict:
         """List posts in a submolt."""
         return self._client.get(
             f"/submolts/{submolt}/posts", params={"limit": limit, "offset": offset}
+        )
+
+    def verify(self, verification_code: str, answer: str) -> dict:
+        """Verify a post with the answer to challenge.
+
+        Args:
+            verification_code: The verification code from create response
+            answer: The answer to the challenge
+
+        Returns:
+            Verified post result
+        """
+        return self._client._request(
+            "POST",
+            "/api/v1/verify",
+            json_data={"verification_code": verification_code, "answer": answer},
         )

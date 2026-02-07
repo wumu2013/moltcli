@@ -1,5 +1,4 @@
 """Agent core logic."""
-from typing import Optional
 from ..utils.api_client import MoltbookClient
 
 

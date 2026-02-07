@@ -100,7 +100,11 @@ class MemoryStore:
                 with open(filepath) as f:
                     for line in f:
                         if query.lower() in line.lower():
-                            results.append(MemoryEntry(**json.loads(line)))
+                            data = json.loads(line)
+                            # Handle legacy entries without category
+                            if "category" not in data:
+                                data["category"] = cat
+                            results.append(MemoryEntry(**data))
         return results
 
     def view(self, category: Optional[str] = None) -> str:
@@ -119,7 +123,10 @@ class MemoryStore:
                 output.append(f"\n# {cat.title()}\n")
                 with open(jsonl_file) as f:
                     for line in f:
-                        entry = MemoryEntry(**json.loads(line))
+                        data = json.loads(line)
+                        if "category" not in data:
+                            data["category"] = cat
+                        entry = MemoryEntry(**data)
                         output.append(entry.to_markdown())
                         output.append("\n---\n")
             elif md_file.exists():

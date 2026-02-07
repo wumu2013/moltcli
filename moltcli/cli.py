@@ -1,4 +1,5 @@
 """MoltCLI - CLI tool for Moltbook social network."""
+
 import sys
 import click
 from .utils import get_config, MoltbookClient, OutputFormatter, handle_error
@@ -22,11 +23,15 @@ def make_formatter(json_mode: bool) -> OutputFormatter:
 # Global options
 @click.group()
 @click.option("--json", "json_mode", is_flag=True, help="Output as JSON")
+@click.option(
+    "--need-more-rate", is_flag=True, help="Show verification info when rate limited"
+)
 @click.pass_context
-def cli(ctx: click.Context, json_mode: bool):
+def cli(ctx: click.Context, json_mode: bool, need_more_rate: bool):
     """MoltCLI - CLI tool for Moltbook social network."""
     ctx.ensure_object(dict)
     ctx.obj["json_mode"] = json_mode
+    ctx.obj["need_more_rate"] = need_more_rate
     ctx.obj["formatter"] = make_formatter(json_mode)
     # Client is lazily loaded when needed (commands that require auth)
 
@@ -97,16 +102,19 @@ def auth_login(ctx: click.Context, api_key: str, agent_name: str, json_mode: boo
     The credentials will be saved to ~/.config/moltbook/credentials.json
     """
     from .utils import Config
+
     formatter = OutputFormatter(json_mode=json_mode)
 
     try:
         config = Config()
         config.save(api_key, agent_name if agent_name else "")
-        formatter.print({
-            "status": "saved",
-            "config_path": str(config.config_path),
-            "message": "Credentials saved successfully"
-        })
+        formatter.print(
+            {
+                "status": "saved",
+                "config_path": str(config.config_path),
+                "message": "Credentials saved successfully",
+            }
+        )
         if not json_mode:
             click.echo(f"\nCredentials saved to: {config.config_path}")
             click.echo("You can now use other moltcli commands.")
@@ -130,23 +138,22 @@ def auth_login(ctx: click.Context, api_key: str, agent_name: str, json_mode: boo
 def auth_logout(ctx: click.Context, json_mode: bool):
     """Remove credentials file."""
     from .utils import Config
+
     formatter = OutputFormatter(json_mode=json_mode)
 
     try:
         config = Config()
         if config.exists():
             config.remove()
-            formatter.print({
-                "status": "removed",
-                "message": "Credentials removed successfully"
-            })
+            formatter.print(
+                {"status": "removed", "message": "Credentials removed successfully"}
+            )
             if not json_mode:
                 click.echo("Credentials removed.")
         else:
-            formatter.print({
-                "status": "skipped",
-                "message": "No credentials file found"
-            })
+            formatter.print(
+                {"status": "skipped", "message": "No credentials file found"}
+            )
             if not json_mode:
                 click.echo("No credentials file to remove.")
     except Exception as e:
@@ -191,30 +198,37 @@ def register(name: str, description: str, json_mode: bool):
             config.save(api_key, name)
 
             if json_mode:
-                formatter.print({
-                    "status": "credentials_saved",
-                    "config_path": str(config.config_path)
-                })
+                formatter.print(
+                    {
+                        "status": "credentials_saved",
+                        "config_path": str(config.config_path),
+                    }
+                )
             else:
                 click.echo("\n" + "=" * 50)
                 click.echo("Credentials saved to: " + str(config.config_path))
                 click.echo("=" * 50)
-                click.echo(f"\nNext steps:")
-                click.echo(f"1. Send this to your human to complete verification:")
+                click.echo("\nNext steps:")
+                click.echo("1. Send this to your human to complete verification:")
                 click.echo(f"   Claim URL: {claim_url}")
                 click.echo(f"   Verification Code: {verification_code}")
-                click.echo(f"\n2. Your human will post a verification tweet,")
-                click.echo(f"   then your account will be activated!")
-                click.echo(f"\n3. Check status with: moltcli status")
+                click.echo("\n2. Your human will post a verification tweet,")
+                click.echo("   then your account will be activated!")
+                click.echo("\n3. Check status with: moltcli status")
                 click.echo("=" * 50)
     except FileExistsError:
         if json_mode:
-            formatter.print({
-                "status": "error",
-                "message": "Credentials already exist. Use 'moltcli auth logout' first."
-            })
+            formatter.print(
+                {
+                    "status": "error",
+                    "message": "Credentials already exist. Use 'moltcli auth logout' first.",
+                }
+            )
         else:
-            click.echo("Error: Credentials already exist. Use 'moltcli auth logout' first.", err=True)
+            click.echo(
+                "Error: Credentials already exist. Use 'moltcli auth logout' first.",
+                err=True,
+            )
     except Exception as e:
         if json_mode:
             formatter.print(handle_error(e))
@@ -357,6 +371,7 @@ def agent_update(ctx: click.Context, description: str, metadata: str):
     Note: You can only update one of description or metadata at a time.
     """
     import json
+
     client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
 
@@ -373,8 +388,7 @@ def agent_update(ctx: click.Context, description: str, metadata: str):
 
     try:
         result = AgentCore(client).update_profile(
-            description=description if description else None,
-            metadata=meta_dict
+            description=description if description else None, metadata=meta_dict
         )
         formatter.print({"status": "updated"})
     except Exception as e:
@@ -402,8 +416,61 @@ def post_create(ctx: click.Context, submolt: str, title: str, content: str, url:
     client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
-        result = PostCore(client).create(submolt=submolt, title=title, content=content, url=url)
-        formatter.print(result)
+        result = PostCore(client).create(
+            submolt=submolt, title=title, content=content, url=url
+        )
+
+        if result.get("verification_required"):
+            # 需要验证时，只有 --need-more-rate 才打印信息
+            if ctx.obj.get("need_more_rate"):
+                formatter.print(
+                    {
+                        "success": True,
+                        "verification_required": True,
+                        "verification": result.get("verification", {}),
+                    }
+                )
+            # 否则不打印任何东西（verification_pending）
+        else:
+            # 不需要验证时，直接发布
+            formatter.print(
+                {
+                    "success": True,
+                    "post_id": result.get("post", {}).get("id"),
+                    "url": result.get("post", {}).get("url"),
+                }
+            )
+
+    except Exception as e:
+        if ctx.obj["json_mode"]:
+            formatter.print(handle_error(e))
+            sys.exit(1)
+        raise
+
+
+@post.command("verify")
+@click.argument("verification_code")
+@click.argument("answer")
+@click.pass_context
+def post_verify(ctx: click.Context, verification_code: str, answer: str):
+    """Verify a post with answer to challenge.
+
+    Usage:
+        moltcli post create --submolt X --title Y --content Z
+        moltcli post verify VERIFICATION_CODE ANSWER
+    """
+    client = ensure_client(ctx)
+    formatter: OutputFormatter = ctx.obj["formatter"]
+    try:
+        result = PostCore(client).verify(verification_code, answer)
+
+        if result.get("success"):
+            click.echo("✅ Post published successfully!")
+            formatter.print(result)
+        else:
+            click.echo("❌ Verification failed!")
+            formatter.print(result)
+
     except Exception as e:
         if ctx.obj["json_mode"]:
             formatter.print(handle_error(e))
@@ -465,7 +532,9 @@ def comment_create(ctx: click.Context, post_id: str, content: str, parent: str):
     client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
-        result = CommentCore(client).create(post_id=post_id, content=content, parent_id=parent)
+        result = CommentCore(client).create(
+            post_id=post_id, content=content, parent_id=parent
+        )
         formatter.print(result)
     except Exception as e:
         if ctx.obj["json_mode"]:
@@ -484,7 +553,9 @@ def comment_reply(ctx: click.Context, post_id: str, parent_id: str, content: str
     client = ensure_client(ctx)
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
-        result = CommentCore(client).create(post_id=post_id, content=content, parent_id=parent_id)
+        result = CommentCore(client).create(
+            post_id=post_id, content=content, parent_id=parent_id
+        )
         formatter.print(result)
     except Exception as e:
         if ctx.obj["json_mode"]:
@@ -519,7 +590,9 @@ def feed():
 
 
 @feed.command("get")
-@click.option("--sort", type=click.Choice(["hot", "new"]), default="hot", help="Sort order")
+@click.option(
+    "--sort", type=click.Choice(["hot", "new"]), default="hot", help="Sort order"
+)
 @click.option("--limit", default=20, help="Max posts to show")
 @click.option("--submolt", help="Filter by submolt")
 @click.pass_context
@@ -580,7 +653,13 @@ def search():
 
 @search.command("query")
 @click.argument("query")
-@click.option("--type", "search_type", type=click.Choice(["posts", "users"]), default="posts", help="Search type")
+@click.option(
+    "--type",
+    "search_type",
+    type=click.Choice(["posts", "users"]),
+    default="posts",
+    help="Search type",
+)
 @click.option("--limit", default=20, help="Max results")
 @click.pass_context
 def search_query(ctx: click.Context, query: str, search_type: str, limit: int):
@@ -606,7 +685,13 @@ def vote():
 
 @vote.command("up")
 @click.argument("item_id")
-@click.option("--type", "item_type", type=click.Choice(["post", "comment"]), default="post", help="Item type")
+@click.option(
+    "--type",
+    "item_type",
+    type=click.Choice(["post", "comment"]),
+    default="post",
+    help="Item type",
+)
 @click.pass_context
 def vote_up(ctx: click.Context, item_id: str, item_type: str):
     """Upvote a post or comment."""
@@ -624,7 +709,13 @@ def vote_up(ctx: click.Context, item_id: str, item_type: str):
 
 @vote.command("down")
 @click.argument("item_id")
-@click.option("--type", "item_type", type=click.Choice(["post", "comment"]), default="post", help="Item type")
+@click.option(
+    "--type",
+    "item_type",
+    type=click.Choice(["post", "comment"]),
+    default="post",
+    help="Item type",
+)
 @click.pass_context
 def vote_down(ctx: click.Context, item_id: str, item_type: str):
     """Downvote a post or comment."""
@@ -726,7 +817,9 @@ def submolts_create(ctx: click.Context, name: str, display_name: str, descriptio
     formatter: OutputFormatter = ctx.obj["formatter"]
     try:
         result = SubmoltsCore(client).create(name, display_name, description)
-        formatter.print({"status": "created", "name": name, "display_name": display_name})
+        formatter.print(
+            {"status": "created", "name": name, "display_name": display_name}
+        )
     except Exception as e:
         if ctx.obj["json_mode"]:
             formatter.print(handle_error(e))
@@ -736,7 +829,12 @@ def submolts_create(ctx: click.Context, name: str, display_name: str, descriptio
 
 @submolts.command("feed")
 @click.argument("name")
-@click.option("--sort", type=click.Choice(["hot", "new", "top", "rising"]), default="hot", help="Sort order")
+@click.option(
+    "--sort",
+    type=click.Choice(["hot", "new", "top", "rising"]),
+    default="hot",
+    help="Sort order",
+)
 @click.option("--limit", default=20, help="Max posts")
 @click.pass_context
 def submolts_feed(ctx: click.Context, name: str, sort: str, limit: int):

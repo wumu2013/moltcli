@@ -1,6 +1,7 @@
 """MoltCLI - CLI tool for Moltbook social network."""
 
 import sys
+from dataclasses import asdict
 import click
 from .utils import get_config, MoltbookClient, OutputFormatter, handle_error
 from .core import (
@@ -900,6 +901,193 @@ def submolts_trending(ctx: click.Context, limit: int):
             formatter.print(handle_error(e))
             sys.exit(1)
         raise
+
+
+# memory command group
+@cli.group()
+def memory():
+    """Local memory operations for CLI-first agents."""
+    pass
+
+
+@memory.command("add")
+@click.argument("content")
+@click.option(
+    "--category",
+    default="learnings",
+    type=click.Choice(
+        ["learnings", "context", "interactions", "platforms", "identity"]
+    ),
+    help="Memory category",
+)
+@click.option("--tags", multiple=True, help="Tags for this memory")
+@click.option("--source", default="cli", help="Source of this memory")
+@click.pass_context
+def memory_add(
+    ctx: click.Context, content: str, category: str, tags: tuple, source: str
+):
+    """Add a new memory entry.
+
+    Store learnings, context, or preferences locally.
+
+    Examples:
+        moltcli memory add "Learned about DID identity systems from @Morningstar"
+        moltcli memory add "Following @AiiCLI" --category interactions --tags cli,community
+    """
+    from .utils import get_memory
+
+    memory = get_memory()
+    entry = memory.add(
+        content=content,
+        category=category,
+        tags=list(tags) if tags else [],
+        source=source,
+    )
+    formatter = ctx.obj["formatter"]
+    formatter.print(
+        {
+            "status": "added",
+            "id": entry.id,
+            "category": entry.category,
+            "created_at": entry.created_at,
+        }
+    )
+
+
+@memory.command("view")
+@click.option(
+    "--category",
+    type=click.Choice(
+        ["learnings", "context", "interactions", "platforms", "identity"]
+    ),
+    help="Filter by category",
+)
+@click.pass_context
+def memory_view(ctx: click.Context, category: str):
+    """View local memories as human-readable output.
+
+    Shows all memories or filters by category.
+    """
+    from .utils import get_memory
+
+    memory = get_memory()
+    output = memory.view(category=category)
+    click.echo(output)
+
+
+@memory.command("search")
+@click.argument("query")
+@click.option(
+    "--category",
+    type=click.Choice(["learnings", "context", "interactions"]),
+    help="Filter by category",
+)
+@click.pass_context
+def memory_search(ctx: click.Context, query: str, category: str):
+    """Search memories by content.
+
+    Find previous learnings, context, or interactions.
+    """
+    from .utils import get_memory
+
+    memory = get_memory()
+    results = memory.search(query=query, category=category)
+    formatter = ctx.obj["formatter"]
+    formatter.print(
+        {"query": query, "count": len(results), "results": [asdict(r) for r in results]}
+    )
+
+
+@memory.command("export")
+@click.option(
+    "--format",
+    default="markdown",
+    type=click.Choice(["json", "markdown"]),
+    help="Export format",
+)
+@click.pass_context
+def memory_export(ctx: click.Context, format: str):
+    """Export all memories for portability.
+
+    Export to JSON for backup/programmatic use, or markdown for human reading.
+
+    Use this to migrate memories to a new platform or backup.
+    """
+    from .utils import get_memory
+
+    memory = get_memory()
+    output = memory.export(format=format)
+    click.echo(output)
+
+
+@memory.command("record-interaction")
+@click.argument("platform")
+@click.argument("action")
+@click.argument("target")
+@click.option("--result", default="success", help="Interaction result")
+@click.pass_context
+def memory_record_interaction(
+    ctx: click.Context, platform: str, action: str, target: str, result: str
+):
+    """Record a platform interaction.
+
+    Automatically tracks posts, comments, and follows.
+
+    Examples:
+        moltcli memory record-interaction moltbook post "post_id_xxx"
+        moltcli memory record-interaction moltbook follow "AgentRunWeb"
+    """
+    from .utils import get_memory
+
+    memory = get_memory()
+    memory.record_interaction(
+        platform=platform, action=action, target=target, result=result
+    )
+    formatter = ctx.obj["formatter"]
+    formatter.print(
+        {"status": "recorded", "platform": platform, "action": action, "target": target}
+    )
+
+
+@memory.command("record-learning")
+@click.argument("content")
+@click.argument("topic")
+@click.option("--source", default="cli", help="Source of the learning")
+@click.pass_context
+def memory_record_learning(ctx: click.Context, content: str, topic: str, source: str):
+    """Record something the agent learned.
+
+    Capture insights, discoveries, or key takeaways.
+
+    Examples:
+        moltcli memory record-learning "CLI-first provides better security" "agent-architecture"
+    """
+    from .utils import get_memory
+
+    memory = get_memory()
+    memory.record_learning(content=content, topic=topic, source=source)
+    formatter = ctx.obj["formatter"]
+    formatter.print({"status": "recorded", "topic": topic})
+
+
+@memory.command("update-context")
+@click.argument("topic")
+@click.argument("details")
+@click.pass_context
+def memory_update_context(ctx: click.Context, topic: str, details: str):
+    """Update current context or preferences.
+
+    Set ongoing topics, current interests, or agent state.
+
+    Examples:
+        moltcli memory update-context "interest" "exploring decentralized identity"
+    """
+    from .utils import get_memory
+
+    memory = get_memory()
+    memory.update_context(topic=topic, details=details)
+    formatter = ctx.obj["formatter"]
+    formatter.print({"status": "updated", "topic": topic})
 
 
 def main():
